@@ -3,7 +3,7 @@
 #include "prioque.h"
 
 
-typedef struct Process
+typedef struct _Process
 {
     int pid;
     int arrival_time;
@@ -22,7 +22,7 @@ typedef struct Process
 } Process;
 
 
-typedef struct ProcessBehavior
+typedef struct _ProcessBehavior
 {
     unsigned long CPU_burst;
     unsigned long IO_burst;
@@ -30,12 +30,13 @@ typedef struct ProcessBehavior
 
 } ProcessBehavior;
 
+
 // Queues
 Queue ArrivalQueue, HighQueue, MediumQueue, LowQueue, IOQueue;
 
 //variables
 int quantum = 0; //CPU given to processes in individual queues
-int result = 2; // 0 for doing IO, 1 for not finished, 2 for finished
+int result; // 0 for doing IO, 1 for not finished, 2 for finished
 int CPU; //model CPU clock
 
 
@@ -44,6 +45,30 @@ Process nullProcess; //null process
 Process *pointer; // points to null or the highest priority
 Process preReadyProcess;
 Process removedProcess;
+
+void read_process_descriptions(void);
+void schedule_queues(Process *process);
+void priority_algorithm();
+void promote(Process *process);
+void demote(Process *process);
+void init_all_queues();
+void init_process(Process *process);
+void final_report();
+void preemption();
+int processes_exist();
+void input_output();
+int execute_process(Process *process);
+int execute_IO(Process *process);
+
+int process_compare(const void *e1, const void *e2) {
+	Process *p1 = (Process *)e1;
+	Process *p2 = (Process *)e2;
+	if (p1->pid == p2->pid) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
 
 void read_process_descriptions(void)
 {
@@ -61,7 +86,7 @@ void read_process_descriptions(void)
         if (!first && process.pid != pid)
         {
             add_to_queue(&ArrivalQueue, &process, process.arrival_time);
-            init_process(&pointer);
+            init_process(&process);
         }
         process.pid = pid;
         process.arrival_time = arrival;
@@ -88,16 +113,14 @@ void final_report()
    // puts(report);
 }
 
-//intialize a process with its characteristics
 void init_process(Process *process)
 {
-    process->usage;
-    process->pid;
-    process->priority;
-    process->demote;
-    process->promote;
-    process->quantum;
     init_queue(&(process->Behaviors), sizeof(ProcessBehavior), TRUE, NULL, TRUE);
+    process->usage = 0;
+    process->priority = 1;
+    process->demote = 0;
+    process->promote = 0;
+    process->quantum = 10;
 
 }
 
@@ -137,7 +160,7 @@ void preemption()
         printf("CREATE: Process %d entered the ready queue at time %d\n", current.pid, CPU);
     }
 }
-//promoting based on priority_algorithm()
+
 void promote(Process *process)
 {
     process->priority--;
@@ -154,7 +177,6 @@ void promote(Process *process)
     }
 }
 
-//demoting based on priority_algorithm()
 void demote(Process *process)
 {
     process->priority++;
@@ -227,7 +249,7 @@ void priority_algorithm()
         }
     }
     //when nullP is null
-    if(!compare_processes(&nullProcess, pointer))
+    if(!process_compare(&nullProcess, pointer))
     {
         if(!(empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue)))
         {
@@ -246,7 +268,7 @@ void priority_algorithm()
             removedProcess = preReadyProcess;
             pointer = &removedProcess;
             quantum= pointer->quantum;
-            printf("RUN: Process %d started execution from level %d at time %d; wants to execute for %lu ticks.\n", pointer->pid, pointer->priority, CPU, pointer->CPU_time);
+            printf("RUN: Process %d started execution from level %d at time %d; wants to execute for %d ticks.\n", pointer->pid, pointer->priority, CPU, pointer->CPU_time);
         }
     }
     //looking for higher priority process
@@ -270,14 +292,13 @@ void priority_algorithm()
                 removedProcess = preReadyProcess;
                 pointer = &removedProcess;
                 quantum = pointer->quantum;
-                printf("RUN: Process %d started execution from level %d at time %d; wants to execute for %lu ticks.\n", pointer->pid, pointer->priority, CPU, pointer->CPU_time);
+                printf("RUN: Process %d started execution from level %d at time %d; wants to execute for %d ticks.\n", pointer->pid, pointer->priority, CPU, pointer->CPU_time);
 
          }
       }
     }
 }
 
-//do any more processes exist?
 int processes_exist()
 {
     return (!(empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue)) || !empty_queue(&IOQueue) || !empty_queue(&ArrivalQueue) || process_compare(&nullProcess, &pointer));
@@ -287,19 +308,19 @@ void input_output()
 {
     if (!empty_queue(&IOQueue))
     {
-        Process IO;
-        init_process(&IO);
+        Process inp;
+        init_process(&inp);
         for(int n = 0; n < IOQueue.queuelength; n++)
         {
-            remove_from_front(&IOQueue, &IO);
-            int result = execute_IO(&IO);
+            remove_from_front(&IOQueue, &inp);
+            int result = execute_IO(&inp);
             if (result != 2)
             {
-                add_to_queue(&IOQueue, &IO, 1);
+                add_to_queue(&IOQueue, &inp, 1);
             }
             else
             {
-                schedule_queues(&IO);
+                schedule_queues(&inp);
             }
         }
     }
@@ -364,21 +385,6 @@ int execute_IO(Process *process)
     {
         return 1;
     }
-}
-
-int process_compare(const void *e1, const void *e2)
-{
-    Process *p1 = (Process *)e1;
-    Process *p2 = (Process *)e2;
-    if(p1->pid != p2->pid)
-    {
-        return 1;
-    }
-    else
-    {
-        return 0;
-    }
-
 }
 
 int main(int argc, char *argv[])
