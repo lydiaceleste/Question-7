@@ -38,7 +38,6 @@ Queue ArrivalQueue, HighQueue, MediumQueue, LowQueue, IOQueue;
 int quantum = 0; //CPU given to processes in individual queues
 int result = 1; // 0 for doing IO, 1 for not finished, 2 for finished
 int CPU; //model CPU clock
-char report[255];
 
 //special processes
 Process nullProcess; //null process
@@ -113,14 +112,12 @@ void final_report()
     printf("Scheduler shutdown at time %d.\n", CPU - 1);
     printf("Total CPU usage for all processes scheduled:\n");
     printf("Process <<null>>:\t%d time units.\n", nullProcess.usage - 1);
-    puts(report);
 }
 
 void init_process(Process *process)
 {
     
     process->usage = 0;
-    process->pid = 0;
     process->priority = 1;
     process->demote = 0;
     process->promote = 0;
@@ -162,7 +159,8 @@ void preemption()
         current.savedIOTime = behavior.IO_burst;
         current.repeat = behavior.repeat;
         schedule_queues(&current);
-        printf("CREATE: Process %d entered the ready queue at time %d\n", current.pid, CPU);
+        printf("PID: %d, ARRIVAL TIME: %d.\n", current.pid, current.arrival_time);
+        printf("CREATE: Process %d entered the ready queue at time %d.\n", current.pid, CPU);
     }
 }
 
@@ -201,129 +199,126 @@ void demote(Process *process)
 
 void priority_algorithm()
 {
-    //option 1, quantum at 0 but process is not complete
-    if(quantum == 0)
+    if(pointer->pid != 0)
     {
-        printf("quantum is 0");
-        if(result == 1)
+        printf("entering algorithm");
+        if(quantum == 0)
         {
-            printf("result is 1");
-            printf("case 1: quantum is 0, result is 1");
-            if(pointer->priority < 3)
+            printf("quantum is 0");
+            if(result == 1) // not finished
             {
-                pointer->demote--;
-                if(pointer->demote == 0)
+                if(pointer->priority < 3)
                 {
-                    demote(pointer);
+                    pointer->demote--;
+                    if(pointer->demote == 0)
+                    {
+                        demote(pointer);
+                    }
+                }
+                else
+                {
+                    pointer->quantum = 100;
+                }
+                schedule_queues(pointer);
+                printf("QUEUED: Process %d queued at level %d at time %d.\n", pointer->pid, pointer->priority, CPU);
+                pointer = &nullProcess;
+            }
+        }
+        
+        if(result == 0) // doing IO
+        {
+            printf("case 2: result is 0");
+            if(pointer->priority > 1)
+            {
+                pointer->promote--;
+                if(pointer->promote == 0)
+                {
+                    promote(pointer);
                 }
             }
             else
             {
-                pointer->quantum = 100;
+                pointer->quantum = 10;
             }
-            schedule_queues(pointer);
-            printf("QUEUED: Process %d queued at level %d at time %d.\n", pointer->pid, pointer->priority, CPU);
+            printf("I/O: Process %d blocked for I/O at time %d\n.", pointer->pid, CPU);
+            add_to_queue(&IOQueue, pointer, 1);
             pointer = &nullProcess;
         }
-    }
-    
-    if(result == 0)
-    {
-        printf("case 2: result is 0");
-        if(pointer->priority > 1)
+        //case 3, finished
+        else if(result == 2) //finished
         {
-            pointer->promote--;
-            if(pointer->promote == 0)
+            if(process_compare(&nullProcess, pointer))
             {
-                promote(pointer);
+                char process_report[50];
+                printf("FINISHED: Process %d finished at time %d.\n", pointer->pid, CPU);
+                printf("Process %d:\t\t%d time units.\n",  pointer->pid, pointer->usage);
             }
         }
-        else
+        //when nullP is null
+        if(!process_compare(&nullProcess, pointer))
         {
-            pointer->quantum = 10;
-        }
-        printf("I/O: Process %d blocked for I/O at time %d\n.", pointer->pid, CPU);
-        add_to_queue(&IOQueue, pointer, 1);
-        pointer = &nullProcess;
-    }
-    //case 3, finished
-    else if(result == 2)
-    {
-        printf("case 3: result is 2, finished");
-        if(process_compare(&nullProcess, pointer))
-        {
-            char process_report[50];
-            printf("FINISHED: Process %d finished at time %d.\n", pointer->pid, CPU);
-            sprintf(process_report, "Process %d:\t\t%d time units.\n",  pointer->pid, pointer->usage);
-            strcat(report, process_report);
-            pointer = &nullProcess;
-        }
-    }
-    //when nullP is null
-    if(!process_compare(&nullProcess, pointer))
-    {
-        if(!(empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue)))
-        {
-            if(!empty_queue(&HighQueue))
+            if(!(empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue)))
             {
-                remove_from_front(&HighQueue, &preReadyProcess);
-            }
-            else if (!empty_queue(&MediumQueue))
-            {
-                remove_from_front(&MediumQueue, &preReadyProcess);
-            }
-            else if (!empty_queue(&LowQueue))
-            {
-                remove_from_front(&LowQueue, &preReadyProcess);
-            }
-            removedProcess = preReadyProcess;
-            pointer = &removedProcess;
-            quantum= pointer->quantum;
-            printf("RUN: Process %d started execution from level %d at time %d; wants to execute for %d ticks.\n", pointer->pid, pointer->priority, CPU, pointer->CPU_time);
-        }
-    }
-    //looking for higher priority process to point to instead of null process
-    else
-    {
-        if (!empty_queue(&HighQueue) || !empty_queue(&MediumQueue))
-        {
-            if(!empty_queue(&HighQueue) && pointer->priority > 1)
-            {
-                remove_from_front(&HighQueue, &preReadyProcess);
-            }
-            else if(!empty_queue(&MediumQueue) && pointer->priority > 2)
-            {
-                remove_from_front(&MediumQueue, &preReadyProcess);
-            }
-            if(pointer->priority > preReadyProcess.priority)
-            {            
-                printf("QUEUED: Process %d queued at level %d at time %d.\n" , pointer->pid, pointer->priority, CPU);
-                pointer->quantum = quantum;
-                schedule_queues(pointer);
-
+                if(!empty_queue(&HighQueue))
+                {
+                    remove_from_front(&HighQueue, &preReadyProcess);
+                }
+                else if (!empty_queue(&MediumQueue))
+                {
+                    remove_from_front(&MediumQueue, &preReadyProcess);
+                }
+                else if (!empty_queue(&LowQueue))
+                {
+                    remove_from_front(&LowQueue, &preReadyProcess);
+                }
                 removedProcess = preReadyProcess;
                 pointer = &removedProcess;
-                quantum = pointer->quantum;
+                quantum= pointer->quantum;
                 printf("RUN: Process %d started execution from level %d at time %d; wants to execute for %d ticks.\n", pointer->pid, pointer->priority, CPU, pointer->CPU_time);
+            }
+        }
+        //looking for higher priority process to point to instead of null process
+        else
+        {
+            if (!empty_queue(&HighQueue) || !empty_queue(&MediumQueue))
+            {
+                if(!empty_queue(&HighQueue) && pointer->priority > 1)
+                {
+                    remove_from_front(&HighQueue, &preReadyProcess);
+                }
+                else if(!empty_queue(&MediumQueue) && pointer->priority > 2)
+                {
+                    remove_from_front(&MediumQueue, &preReadyProcess);
+                }
+                if(pointer->priority > preReadyProcess.priority)
+                {            
+                    printf("QUEUED: Process %d queued at level %d at time %d.\n" , pointer->pid, pointer->priority, CPU);
+                    pointer->quantum = quantum;
+                    schedule_queues(pointer);
 
-         }
-      }
+                    removedProcess = preReadyProcess;
+                    pointer = &removedProcess;
+                    quantum = pointer->quantum;
+                    printf("RUN: Process %d started execution from level %d at time %d; wants to execute for %d ticks.\n", pointer->pid, pointer->priority, CPU, pointer->CPU_time);
+
+            }
+        }
+        }
+        result = execute_process(pointer);
+        quantum--;
     }
-    result = execute_process(pointer);
-    quantum--;
 }
 
 int processes_exist()
 {
-    if ((empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue))|| !empty_queue(&IOQueue) || !empty_queue(&ArrivalQueue) || process_compare(&nullProcess, pointer))
-    {
-        return TRUE;
-    }
-    else
+    if ((empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue))|| !empty_queue(&IOQueue) || !empty_queue(&ArrivalQueue))
     {
         return FALSE;
     }
-    //rn for some reason it is always true
+    else
+    {
+        return TRUE;
+    }
 }
 
 void input_output()
@@ -428,18 +423,18 @@ int main(int argc, char *argv[])
 
     init_process(&removedProcess);
 
-    printf("Queue entries one per line:");
+    printf("Queue entries one per line:\n");
 
     read_process_descriptions();
 
-    while (processes_exist() == TRUE)
+    while (processes_exist() == FALSE)
     {
         CPU++;
         preemption();
         priority_algorithm();
         input_output();
     }
-    printf("line 418");
+
     CPU++;
     final_report();
     return 0;
