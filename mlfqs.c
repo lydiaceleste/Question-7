@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "prioque.h"
+#include <string.h>
 
 
-typedef struct _Process
+typedef struct Process
 {
     int pid;
     int arrival_time;
@@ -22,7 +23,7 @@ typedef struct _Process
 } Process;
 
 
-typedef struct _ProcessBehavior
+typedef struct ProcessBehavior
 {
     unsigned long CPU_burst;
     unsigned long IO_burst;
@@ -30,15 +31,14 @@ typedef struct _ProcessBehavior
 
 } ProcessBehavior;
 
-
 // Queues
 Queue ArrivalQueue, HighQueue, MediumQueue, LowQueue, IOQueue;
 
 //variables
 int quantum = 0; //CPU given to processes in individual queues
-int result; // 0 for doing IO, 1 for not finished, 2 for finished
+int result = 1; // 0 for doing IO, 1 for not finished, 2 for finished
 int CPU; //model CPU clock
-
+char report[255];
 
 //special processes
 Process nullProcess; //null process
@@ -74,7 +74,8 @@ void read_process_descriptions(void)
 {
     Process process;
     ProcessBehavior b;
-    int pid = 0, first = 1;
+    int pid;
+    int first = 1;
     unsigned long arrival;
 
     init_process(&process);
@@ -92,8 +93,10 @@ void read_process_descriptions(void)
         process.arrival_time = arrival;
         first = 0;
         add_to_queue(&process.Behaviors, &b, 1);
+
     }
     add_to_queue(&ArrivalQueue, &process, process.arrival_time);
+    
 }
 
 void init_all_queues()
@@ -109,18 +112,20 @@ void final_report()
 {
     printf("Scheduler shutdown at time %d.\n", CPU - 1);
     printf("Total CPU usage for all processes scheduled:\n");
-   // printf("Process <<null>>:\t%d time units.\n", NullProcess.CPU_Usage - 1);
-   // puts(report);
+    printf("Process <<null>>:\t%d time units.\n", nullProcess.usage - 1);
+    puts(report);
 }
 
 void init_process(Process *process)
 {
-    init_queue(&(process->Behaviors), sizeof(ProcessBehavior), TRUE, NULL, TRUE);
+    
     process->usage = 0;
+    process->pid = 0;
     process->priority = 1;
     process->demote = 0;
     process->promote = 0;
     process->quantum = 10;
+    init_queue(&(process->Behaviors), sizeof(ProcessBehavior), TRUE, NULL, TRUE);
 
 }
 
@@ -143,13 +148,13 @@ void schedule_queues(Process *process)
 void preemption()
 {
     Process current;
-    ProcessBehavior behavior;
     init_process(&current);
     rewind_queue(&ArrivalQueue);
     peek_at_current(&ArrivalQueue, &current);
-
     if(CPU == current.arrival_time)
     {
+        remove_from_front(&ArrivalQueue, &current);
+        ProcessBehavior behavior;
         remove_from_front(&(current.Behaviors), &behavior);
         current.CPU_time = behavior.CPU_burst;
         current.savedTime = behavior.CPU_burst;
@@ -163,6 +168,7 @@ void preemption()
 
 void promote(Process *process)
 {
+
     process->priority--;
     if(process->priority == 2)
     {
@@ -198,8 +204,11 @@ void priority_algorithm()
     //option 1, quantum at 0 but process is not complete
     if(quantum == 0)
     {
+        printf("quantum is 0");
         if(result == 1)
         {
+            printf("result is 1");
+            printf("case 1: quantum is 0, result is 1");
             if(pointer->priority < 3)
             {
                 pointer->demote--;
@@ -217,9 +226,10 @@ void priority_algorithm()
             pointer = &nullProcess;
         }
     }
-    //case 2
+    
     if(result == 0)
     {
+        printf("case 2: result is 0");
         if(pointer->priority > 1)
         {
             pointer->promote--;
@@ -232,19 +242,20 @@ void priority_algorithm()
         {
             pointer->quantum = 10;
         }
-        printf("I/O: Process %d blocked for I/O at time %d\n", pointer->pid, CPU);
+        printf("I/O: Process %d blocked for I/O at time %d\n.", pointer->pid, CPU);
         add_to_queue(&IOQueue, pointer, 1);
         pointer = &nullProcess;
     }
     //case 3, finished
     else if(result == 2)
     {
+        printf("case 3: result is 2, finished");
         if(process_compare(&nullProcess, pointer))
         {
-            //process report
             char process_report[50];
             printf("FINISHED: Process %d finished at time %d.\n", pointer->pid, CPU);
-            printf(process_report, "Process %d:\t\t%d time units.\n", pointer->pid, pointer->usage);
+            sprintf(process_report, "Process %d:\t\t%d time units.\n",  pointer->pid, pointer->usage);
+            strcat(report, process_report);
             pointer = &nullProcess;
         }
     }
@@ -271,7 +282,7 @@ void priority_algorithm()
             printf("RUN: Process %d started execution from level %d at time %d; wants to execute for %d ticks.\n", pointer->pid, pointer->priority, CPU, pointer->CPU_time);
         }
     }
-    //looking for higher priority process
+    //looking for higher priority process to point to instead of null process
     else
     {
         if (!empty_queue(&HighQueue) || !empty_queue(&MediumQueue))
@@ -289,6 +300,7 @@ void priority_algorithm()
                 printf("QUEUED: Process %d queued at level %d at time %d.\n" , pointer->pid, pointer->priority, CPU);
                 pointer->quantum = quantum;
                 schedule_queues(pointer);
+
                 removedProcess = preReadyProcess;
                 pointer = &removedProcess;
                 quantum = pointer->quantum;
@@ -297,11 +309,21 @@ void priority_algorithm()
          }
       }
     }
+    result = execute_process(pointer);
+    quantum--;
 }
 
 int processes_exist()
 {
-    return (!(empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue)) || !empty_queue(&IOQueue) || !empty_queue(&ArrivalQueue) || process_compare(&nullProcess, &pointer));
+    if ((empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue))|| !empty_queue(&IOQueue) || !empty_queue(&ArrivalQueue) || process_compare(&nullProcess, pointer))
+    {
+        return TRUE;
+    }
+    else
+    {
+        return FALSE;
+    }
+    //rn for some reason it is always true
 }
 
 void input_output()
@@ -331,27 +353,34 @@ int execute_process(Process *process)
     process->usage++;
     if(process->pid != 0)
     {
+
         process->CPU_time--;
         if(process->CPU_time == 0)
         {
+
             if(process->IOtime > 0)
             {
+
                 process->CPU_time = process->savedTime;
                 return 0;
+                //do IO
             }
             else
             {
                 return 2;
+                //finished
             }
         }
         else
         {
             return 1;
+            //not finished
         }
     }
     else
     {
         return 2;
+        //finished
     }
 }
 
@@ -383,26 +412,34 @@ int execute_IO(Process *process)
     }
     else
     {
-        return 1;
+     return 1;
     }
 }
 
 int main(int argc, char *argv[])
 {
     init_all_queues();
+
     init_process(&nullProcess);
+
     pointer = &nullProcess;
+
     init_process(&preReadyProcess);
+
     init_process(&removedProcess);
+
+    printf("Queue entries one per line:");
+
     read_process_descriptions();
 
-    while (processes_exist())
+    while (processes_exist() == TRUE)
     {
         CPU++;
         preemption();
         priority_algorithm();
         input_output();
     }
+    printf("line 418");
     CPU++;
     final_report();
     return 0;
