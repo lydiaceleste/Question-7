@@ -32,7 +32,7 @@ typedef struct ProcessBehavior
 } ProcessBehavior;
 
 // Queues
-Queue ArrivalQueue, HighQueue, MediumQueue, LowQueue, IOQueue;
+Queue ArrivalQueue, HighQueue, MediumQueue, LowQueue, IOQueue, FinalQueue;
 
 //variables
 int quantum = 0; //CPU given to processes in individual queues
@@ -51,13 +51,13 @@ void priority_algorithm();
 void promote(Process *process);
 void demote(Process *process);
 void init_all_queues();
-void init_process(Process *process);
+void init_process();
 void report();
 void preemption();
 int processes_exist();
 void io();
-int execute_process(Process *process);
-int execute_IO(Process *process);
+int execute_process();
+int execute_IO();
 
 
 void preemption()
@@ -128,15 +128,23 @@ void init_all_queues()
     init_queue(&MediumQueue, sizeof(Process), TRUE, process_compare, TRUE);
     init_queue(&LowQueue, sizeof(Process), TRUE, process_compare, TRUE);
     init_queue(&IOQueue, sizeof(Process), FALSE, process_compare, TRUE);
+    init_queue(&FinalQueue, sizeof(Process), FALSE, process_compare, TRUE);
+
 }
 
 void report()
 {
-    Process process;
+    Process *process;
     printf("Scheduler shutdown at time %d.\n", CPU - 1);
     printf("Total CPU usage for all processes scheduled:\n");
     printf("Process <<null>>:\t%d time units.\n", nullProcess.usage - 1);
-    printf("Process <%d>:\t%d time units.\n", process.pid, process.usage);
+    while(FinalQueue.queuelength != 0)
+    {
+        rewind_queue(&FinalQueue);
+        process = pointer_to_current(&FinalQueue);
+        printf("Process %d: %d time units. \n" , process->pid, process->usage);
+        delete_current(&FinalQueue);
+    }
 }
 
 void init_process(Process *process)
@@ -147,7 +155,7 @@ void init_process(Process *process)
     process->demote = 0;
     process->promote = 0;
     process->quantum = 10;
-    init_queue(&(process->Behaviors), sizeof(ProcessBehavior), TRUE, NULL, TRUE);
+    init_queue(&(process->Behaviors), sizeof(ProcessBehavior), TRUE, process_compare, TRUE);
 
 }
 
@@ -219,8 +227,7 @@ void priority_algorithm()
                 {
                     pointer->quantum = 100;
                 }
-                if(pointer->pid != 0)
-                {
+                if(pointer->pid != 0) {
                     schedule_queues(pointer);
                     printf("QUEUED: Process %d queued at level %d at time %d.\n", pointer->pid, pointer->priority, CPU);
                     pointer = &nullProcess;
@@ -228,9 +235,8 @@ void priority_algorithm()
             }
         }
         
-        if(result == 0) // doing IO
+        if(result == 0) // hopefully... doing IO
         {
-            printf("case 2: result is 0\n");
             if(pointer->priority > 1)
             {
                 pointer->promote--;
@@ -245,7 +251,7 @@ void priority_algorithm()
             }
             if(pointer->pid != 0)
             {
-                printf("I/O: Process %d blocked for I/O at time %d\n.", pointer->pid, CPU);
+                printf("I/O: Process %d blocked for I/O at time %d.\n", pointer->pid, CPU);
                 add_to_queue(&IOQueue, pointer, pointer->priority);
                 pointer = &nullProcess;
             }
@@ -256,14 +262,11 @@ void priority_algorithm()
             if(pointer->pid != 0)
             {
                 printf("FINISHED: Process %d finished at time %d.\n", pointer->pid, CPU);
+                add_to_queue(&FinalQueue, pointer, 1);
                 pointer = &nullProcess;
             }
-            else
-            {
-                return;
-            }
         }
-        if(!process_compare(&nullProcess, pointer))
+        if(pointer->pid == 0)
         {
             if(!(empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue)))
             {
@@ -336,7 +339,7 @@ int execute_process(Process *process)
     process->usage++;
     if(process->pid != 0)
     {
-
+        //never enters here, look into
         process->CPU_time--;
         if(process->CPU_time == 0)
         {
@@ -347,6 +350,7 @@ int execute_process(Process *process)
                 process->CPU_time = process->savedTime;
                 return 0;
                 //do IO
+                
             }
             else
             {
@@ -443,6 +447,7 @@ int main(int argc, char *argv[])
         preemption();
         priority_algorithm();
         io();
+
     }
     CPU++;
     report();
