@@ -45,19 +45,42 @@ Process *pointer; // points to null or the highest priority
 Process preReadyProcess;
 Process removedProcess;
 
-void read_process_descriptions(void);
+void input(void);
 void schedule_queues(Process *process);
 void priority_algorithm();
 void promote(Process *process);
 void demote(Process *process);
 void init_all_queues();
 void init_process(Process *process);
-void final_report();
+void report();
 void preemption();
 int processes_exist();
-void input_output();
+void io();
 int execute_process(Process *process);
 int execute_IO(Process *process);
+
+
+void preemption()
+{
+    Process current;
+    init_process(&current);
+    rewind_queue(&ArrivalQueue);
+    peek_at_current(&ArrivalQueue, &current);
+    if(CPU == current.arrival_time)
+    {
+        remove_from_front(&ArrivalQueue, &current);
+        ProcessBehavior behavior;
+        remove_from_front(&(current.Behaviors), &behavior);
+        current.CPU_time = behavior.CPU_burst;
+        current.savedTime = behavior.CPU_burst;
+        current.IOtime = behavior.IO_burst;
+        current.savedIOTime = behavior.IO_burst;
+        current.repeat = behavior.repeat;
+        schedule_queues(&current);
+        printf("PID: %d, ARRIVAL TIME: %d.\n", current.pid, current.arrival_time);
+        printf("CREATE: Process %d entered the ready queue at time %d.\n", current.pid, CPU);
+    }
+}
 
 int process_compare(const void *e1, const void *e2) {
 	Process *p1 = (Process *)e1;
@@ -69,7 +92,7 @@ int process_compare(const void *e1, const void *e2) {
 	}
 }
 
-void read_process_descriptions(void)
+void input(void)
 {
     Process process;
     ProcessBehavior b;
@@ -100,14 +123,14 @@ void read_process_descriptions(void)
 
 void init_all_queues()
 {
-    init_queue(&ArrivalQueue, sizeof(Process), FALSE, process_compare, FALSE);
-    init_queue(&HighQueue, sizeof(Process), FALSE, process_compare, FALSE);
-    init_queue(&MediumQueue, sizeof(Process), FALSE, process_compare, FALSE);
-    init_queue(&LowQueue, sizeof(Process), FALSE, process_compare, FALSE);
+    init_queue(&ArrivalQueue, sizeof(Process), TRUE, process_compare, TRUE);
+    init_queue(&HighQueue, sizeof(Process), TRUE, process_compare, TRUE);
+    init_queue(&MediumQueue, sizeof(Process), TRUE, process_compare, TRUE);
+    init_queue(&LowQueue, sizeof(Process), TRUE, process_compare, TRUE);
     init_queue(&IOQueue, sizeof(Process), FALSE, process_compare, TRUE);
 }
 
-void final_report()
+void report()
 {
     Process process;
     printf("Scheduler shutdown at time %d.\n", CPU - 1);
@@ -132,37 +155,15 @@ void schedule_queues(Process *process)
 {
     if(process->priority == 1)
     {
-        add_to_queue(&HighQueue, process, process->quantum);
+        add_to_queue(&HighQueue, process, process->priority);
     }
     else if (process->priority == 2)
     {
-        add_to_queue(&MediumQueue, process, process->quantum);
+        add_to_queue(&MediumQueue, process, process->priority);
     }
     else if (process->priority == 3)
     {
-        add_to_queue(&LowQueue, process, process->quantum);
-    }
-}
-
-void preemption()
-{
-    Process current;
-    init_process(&current);
-    rewind_queue(&ArrivalQueue);
-    peek_at_current(&ArrivalQueue, &current);
-    if(CPU == current.arrival_time)
-    {
-        remove_from_front(&ArrivalQueue, &current);
-        ProcessBehavior behavior;
-        remove_from_front(&(current.Behaviors), &behavior);
-        current.CPU_time = behavior.CPU_burst;
-        current.savedTime = behavior.CPU_burst;
-        current.IOtime = behavior.IO_burst;
-        current.savedIOTime = behavior.IO_burst;
-        current.repeat = behavior.repeat;
-        schedule_queues(&current);
-        printf("PID: %d, ARRIVAL TIME: %d.\n", current.pid, current.arrival_time);
-        printf("CREATE: Process %d entered the ready queue at time %d.\n", current.pid, CPU);
+        add_to_queue(&LowQueue, process, process->priority);
     }
 }
 
@@ -209,7 +210,6 @@ void priority_algorithm()
                 if(pointer->priority < 3)
                 {
                     pointer->demote--;
-                    printf("demoted");
                     if(pointer->demote == 0)
                     {
                         demote(pointer);
@@ -246,12 +246,12 @@ void priority_algorithm()
             if(pointer->pid != 0)
             {
                 printf("I/O: Process %d blocked for I/O at time %d\n.", pointer->pid, CPU);
-                add_to_queue(&IOQueue, pointer, 1);
+                add_to_queue(&IOQueue, pointer, pointer->priority);
                 pointer = &nullProcess;
             }
         }
-        //case 3, finished
-        else if(result == 2) //finished
+        //case 3, process is finished
+        else if(result == 2) 
         {
             if(pointer->pid != 0)
             {
@@ -263,7 +263,6 @@ void priority_algorithm()
                 return;
             }
         }
-        //when nullP is null
         if(!process_compare(&nullProcess, pointer))
         {
             if(!(empty_queue(&HighQueue) && empty_queue(&LowQueue) && empty_queue(&MediumQueue)))
@@ -293,10 +292,12 @@ void priority_algorithm()
             {
                 if(!empty_queue(&HighQueue) && pointer->priority > 1)
                 {
+                    printf("in the 2ndif");
                     remove_from_front(&HighQueue, &preReadyProcess);
                 }
                 else if(!empty_queue(&MediumQueue) && pointer->priority > 2)
                 {
+                    printf("in the else if");
                     remove_from_front(&MediumQueue, &preReadyProcess);
                 }
                 if(pointer->priority > preReadyProcess.priority)
@@ -327,28 +328,6 @@ int processes_exist()
     else
     {
         return TRUE;
-    }
-}
-
-void input_output()
-{
-    if (!empty_queue(&IOQueue))
-    {
-        Process inp;
-        init_process(&inp);
-        for(int n = 0; n < IOQueue.queuelength; n++)
-        {
-            remove_from_front(&IOQueue, &inp);
-            int result = execute_IO(&inp);
-            if (result != 2)
-            {
-                add_to_queue(&IOQueue, &inp, 1);
-            }
-            else
-            {
-                schedule_queues(&inp);
-            }
-        }
     }
 }
 
@@ -385,6 +364,28 @@ int execute_process(Process *process)
     {
         return 2;
         //finished
+    }
+}
+
+void io()
+{
+    if (!empty_queue(&IOQueue))
+    {
+        Process inp;
+        init_process(&inp);
+        for(int n = 0; n < IOQueue.queuelength; n++)
+        {
+            remove_from_front(&IOQueue, &inp);
+            int result = execute_IO(&inp);
+            if (result != 2)
+            {
+                add_to_queue(&IOQueue, &inp, 1);
+            }
+            else
+            {
+                schedule_queues(&inp);
+            }
+        }
     }
 }
 
@@ -434,16 +435,16 @@ int main(int argc, char *argv[])
 
     printf("Queue entries one per line:\n");
 
-    read_process_descriptions();
+    input();
 
-    while (processes_exist() == TRUE)
+    while (processes_exist())
     {
         CPU++;
         preemption();
         priority_algorithm();
-        input_output();
+        io();
     }
     CPU++;
-    final_report();
+    report();
     return 0;
 }
